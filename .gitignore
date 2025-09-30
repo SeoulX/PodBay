@@ -150,11 +150,6 @@ logs
 *.kubeconfig
 kubeconfig*
 
-# Docker
-.dockerignore
-Dockerfile*
-docker-compose*.yml
-
 # Database
 *.db
 *.sqlite

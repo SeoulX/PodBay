@@ -43,7 +43,7 @@ class APMErrorQueries:
             # Add service filter if specified
             if service_name:
                 # Try keyword field first, fallback to text field
-                filters.append({"term": {"service.name.keyword": service_name}})
+                filters.append({"term": {"service.name": service_name}})
                 logger.info(f"Filtering by service: {service_name}")
             else:
                 logger.info("Querying all services")
@@ -51,7 +51,7 @@ class APMErrorQueries:
             # Add environment filter if specified
             if environment:
                 # Try keyword field first, fallback to text field
-                filters.append({"term": {"service.environment.keyword": environment}})
+                filters.append({"term": {"service.environment": environment}})
                 logger.info(f"Filtering by environment: {environment}")
             else:
                 logger.info("Querying all environments")
@@ -66,14 +66,14 @@ class APMErrorQueries:
                 "aggs": {
                     "by_service": {
                         "terms": {
-                            "field": "service.name.keyword",  # Use keyword field for aggregations
+                            "field": "service.name",  # Use keyword field for aggregations (logs-apm.error* uses keyword type)
                             "size": 1000,  # Support up to 1000 services
                             "missing": "unknown"  # Handle missing values
                         },
                         "aggs": {
                             "by_environment": {
                                 "terms": {
-                                    "field": "service.environment.keyword",  # Use keyword field for aggregations
+                                    "field": "service.environment",  # Use keyword field for aggregations (logs-apm.error* uses keyword type)
                                     "size": 100,  # Support up to 100 environments per service
                                     "missing": "unknown"  # Handle missing values
                                 }
@@ -84,8 +84,9 @@ class APMErrorQueries:
             }
             
             logger.info(f"Querying APM errors in last {lookback_minutes} minutes")
+            # Query both apm-* and logs-apm.error* indices to catch all error types
             res = self.es_client.search(
-                index="apm-*",
+                index="logs-apm.error*",
                 body=query_body
             )
             

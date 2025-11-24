@@ -1,5 +1,6 @@
 resources:
-- cronjob.yaml
+  - cronjob.yaml
+  # - deployment.yaml  # Uncomment for continuous monitoring mode
 
 namespace: elastic-stack
 
@@ -18,5 +19,87 @@ secretGenerator:
 - name: apm-monitor-secret
   env: secret.properties
   options:
+    labels:
+      app: apm-error-monitor
     disableNameSuffixHash: true
 
+patches:
+  - target:
+      group: batch
+      version: v1
+      kind: CronJob
+      name: apm-error-monitor
+    patch: |-
+      - op: replace
+        path: /spec/jobTemplate/spec/template/spec/containers/0/name
+        value: apm-error-monitor
+      - op: replace
+        path: /spec/jobTemplate/spec/template/spec/containers/0/image
+        value: your-dockerhub-username/podbay:latest  # Update with your Docker Hub image
+      - op: replace
+        path: /spec/jobTemplate/spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent
+      - op: replace
+        path: /spec/jobTemplate/spec/template/spec/restartPolicy
+        value: OnFailure
+      - op: replace
+        path: /spec/jobTemplate/spec/template/spec/containers/0/resources
+        value:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+      - op: replace
+        path: /spec/jobTemplate/spec/template/spec/containers/0/envFrom/0/configMapRef/name
+        value: apm-monitor-config
+      - op: replace
+        path: /spec/jobTemplate/spec/template/spec/containers/0/envFrom/1/secretRef/name
+        value: apm-monitor-secret
+      - op: replace
+        path: /spec/successfulJobsHistoryLimit
+        value: 3
+      - op: replace
+        path: /spec/failedJobsHistoryLimit
+        value: 3
+      - op: replace
+        path: /spec/schedule
+        value: "*/5 * * * *"  # Every 5 minutes
+
+# Uncomment for Deployment (continuous monitoring) mode
+# - target:
+#     group: apps
+#     version: v1
+#     kind: Deployment
+#     name: apm-error-monitor
+#   patch: |-
+#     - op: replace
+#       path: /spec/template/spec/containers/0/name
+#       value: apm-error-monitor
+#     - op: replace
+#       path: /spec/template/spec/containers/0/image
+#       value: your-dockerhub-username/podbay:latest  # Update with your Docker Hub image
+#     - op: replace
+#       path: /spec/template/spec/containers/0/imagePullPolicy
+#       value: IfNotPresent
+#     - op: replace
+#       path: /spec/template/spec/containers/0/resources
+#       value:
+#         requests:
+#           cpu: 50m
+#           memory: 64Mi
+#         limits:
+#           cpu: 100m
+#           memory: 128Mi
+#     - op: replace
+#       path: /spec/template/spec/containers/0/envFrom/0/configMapRef/name
+#       value: apm-monitor-config
+#     - op: replace
+#       path: /spec/template/spec/containers/0/envFrom/1/secretRef/name
+#       value: apm-monitor-secret
+#     - op: add
+#       path: /spec/template/spec/containers/0/env
+#       value:
+#         - name: MONITOR_INTERVAL
+#           value: "300"  # 5 minutes in seconds

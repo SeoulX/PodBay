@@ -1,0 +1,22 @@
+resources:
+- cronjob.yaml
+
+namespace: elastic-stack
+
+commonLabels:
+  app: apm-error-monitor
+
+configMapGenerator:
+- name: apm-monitor-config
+  env: config.properties
+  options:
+    labels:
+      app: apm-error-monitor
+    disableNameSuffixHash: true
+
+secretGenerator:
+- name: apm-monitor-secret
+  env: secret.properties
+  options:
+    disableNameSuffixHash: true
+

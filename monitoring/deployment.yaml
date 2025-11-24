@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apm-error-monitor
+  namespace: elastic-stack
+  labels:
+    app: apm-error-monitor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: apm-error-monitor
+  template:
+    metadata:
+      labels:
+        app: apm-error-monitor
+    spec:
+      restartPolicy: Always
+      containers:
+      - name: monitor
+        image: apm-error-monitor:latest
+        imagePullPolicy: IfNotPresent
+        envFrom:
+        - configMapRef:
+            name: apm-monitor-config
+        - secretRef:
+            name: apm-monitor-secret
+        # Add interval environment variable for continuous monitoring
+        env:
+        - name: MONITOR_INTERVAL
+          value: "300"  # 5 minutes in seconds
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+

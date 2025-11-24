@@ -28,7 +28,7 @@ jobs:
           REPO_NAME=$(basename "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           
           # Extract version from tag (e.g., v1.0.0 -> 1.0.0)
-          VERSION_TAG=${GITHUB_REF_NAME}  # Remove 'v' prefix
+          VERSION_TAG=${GITHUB_REF_NAME#v}  # Remove 'v' prefix
           
           # Parse semantic version components
           IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION_TAG"

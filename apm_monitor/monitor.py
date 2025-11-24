@@ -95,13 +95,7 @@ class APMErrorMonitor:
                             f"{error_info['service']}/{error_info['environment']}"
                         )
             
-            # Also send a summary alert
-            if not self.alerts.send_summary_alert(errors_by_service_env, total_errors):
-                logger.warning(
-                    "Failed to send summary alert, but individual alerts were sent"
-                )
-            
-            logger.info(f"Sent {alerts_sent} individual alerts and 1 summary alert")
+            logger.info(f"Sent {alerts_sent} individual alerts")
         else:
             logger.info("No errors detected across all services and environments")
         

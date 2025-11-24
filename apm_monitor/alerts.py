@@ -23,7 +23,7 @@ class WebhookAlerts:
         """
         self.webhook_url = webhook_url
     
-    def send_alert(self, service_name, error_count, environment):
+    def send_alert(self, service_name, error_count, environment, sample_errors=None):
         """
         Send alert to webhook (Slack) for a specific service/environment.
         
@@ -31,6 +31,7 @@ class WebhookAlerts:
             service_name: Name of the service
             error_count: Number of errors detected
             environment: Environment name
+            sample_errors: Optional list of sample error details
         
         Returns:
             bool: True if alert was sent successfully, False otherwise
@@ -45,34 +46,64 @@ class WebhookAlerts:
             f"*Time:* {timestamp}"
         )
         
+        # Build fields for attachment
+        fields = [
+            {
+                "title": "Service",
+                "value": service_name,
+                "short": True
+            },
+            {
+                "title": "Environment",
+                "value": environment,
+                "short": True
+            },
+            {
+                "title": "Error Count",
+                "value": str(error_count),
+                "short": True
+            },
+            {
+                "title": "Time",
+                "value": timestamp,
+                "short": True
+            }
+        ]
+        
+        # Add error details if available
+        if sample_errors and len(sample_errors) > 0:
+            error_details = []
+            for i, err in enumerate(sample_errors[:3], 1):  # Show up to 3 sample errors
+                error_msg = err.get("message", "")
+                error_type = err.get("type", "")
+                error_culprit = err.get("culprit", "")
+                
+                detail = f"*Error {i}:*"
+                if error_type:
+                    detail += f"\nType: {error_type}"
+                if error_culprit:
+                    detail += f"\nLocation: {error_culprit}"
+                if error_msg:
+                    # Truncate very long messages for Slack
+                    msg = error_msg[:300] + "..." if len(error_msg) > 300 else error_msg
+                    detail += f"\nMessage: {msg}"
+                
+                error_details.append(detail)
+            
+            if error_details:
+                fields.append({
+                    "title": "Sample Errors",
+                    "value": "\n\n".join(error_details),
+                    "short": False
+                })
+        
         # Slack webhook format
         payload = {
             "text": text,
             "attachments": [
                 {
                     "color": "danger",
-                    "fields": [
-                        {
-                            "title": "Service",
-                            "value": service_name,
-                            "short": True
-                        },
-                        {
-                            "title": "Environment",
-                            "value": environment,
-                            "short": True
-                        },
-                        {
-                            "title": "Error Count",
-                            "value": str(error_count),
-                            "short": True
-                        },
-                        {
-                            "title": "Time",
-                            "value": timestamp,
-                            "short": True
-                        }
-                    ]
+                    "fields": fields
                 }
             ]
         }

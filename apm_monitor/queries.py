@@ -76,6 +76,17 @@ class APMErrorQueries:
                                     "field": "service.environment",  # Use keyword field for aggregations (logs-apm.error* uses keyword type)
                                     "size": 100,  # Support up to 100 environments per service
                                     "missing": "unknown"  # Handle missing values
+                                },
+                                "aggs": {
+                                    "sample_errors": {
+                                        "top_hits": {
+                                            "size": 3,
+                                            "sort": [{"@timestamp": {"order": "desc"}}],
+                                            "_source": {
+                                                "includes": ["error.log.message", "error.culprit", "error.type", "@timestamp"]
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -104,10 +115,37 @@ class APMErrorQueries:
                         for env_bucket in service_bucket["by_environment"]["buckets"]:
                             env = env_bucket["key"]
                             env_count = env_bucket["doc_count"]
+                            
+                            # Extract sample error messages
+                            sample_errors = []
+                            if "sample_errors" in env_bucket:
+                                for hit in env_bucket["sample_errors"]["hits"]["hits"]:
+                                    error_source = hit.get("_source", {})
+                                    error_info = error_source.get("error", {})
+                                    error_log = error_info.get("log", {})
+                                    
+                                    error_message = error_log.get("message", "")
+                                    if not error_message:
+                                        error_message = error_info.get("message", "")
+                                    if not error_message:
+                                        error_message = error_info.get("type", "Unknown error")
+                                    
+                                    # Truncate long messages
+                                    if len(error_message) > 500:
+                                        error_message = error_message[:500] + "..."
+                                    
+                                    sample_errors.append({
+                                        "message": error_message,
+                                        "culprit": error_info.get("culprit", ""),
+                                        "type": error_info.get("type", ""),
+                                        "timestamp": error_source.get("@timestamp", "")
+                                    })
+                            
                             errors_by_service_env.append({
                                 "service": service,
                                 "environment": env,
-                                "error_count": env_count
+                                "error_count": env_count,
+                                "sample_errors": sample_errors
                             })
                             total_errors += env_count
                     else:
@@ -115,7 +153,8 @@ class APMErrorQueries:
                         errors_by_service_env.append({
                             "service": service,
                             "environment": "unknown",
-                            "error_count": service_total
+                            "error_count": service_total,
+                            "sample_errors": []
                         })
                         total_errors += service_total
             

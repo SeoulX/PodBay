@@ -83,10 +83,12 @@ class APMErrorMonitor:
             alerts_sent = 0
             for error_info in errors_by_service_env:
                 if error_info["error_count"] > 0:
+                    sample_errors = error_info.get("sample_errors", [])
                     if self.alerts.send_alert(
                         error_info["service"],
                         error_info["error_count"],
-                        error_info["environment"]
+                        error_info["environment"],
+                        sample_errors=sample_errors
                     ):
                         alerts_sent += 1
                     else:

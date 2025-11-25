@@ -33,6 +33,15 @@ class Config:
         
         # Webhook configuration
         self.slack_webhook = os.getenv("SLACK_WEBHOOK")
+        # Service-specific webhooks (format: "ServiceName:webhook_url,ServiceName2:webhook_url2")
+        # Example: "Salina:https://hooks.slack.com/...,Media-Meter:https://hooks.slack.com/..."
+        self.service_webhooks = {}
+        service_webhooks_str = os.getenv("SERVICE_WEBHOOKS", "")
+        if service_webhooks_str:
+            for mapping in service_webhooks_str.split(","):
+                if ":" in mapping:
+                    service, webhook = mapping.split(":", 1)
+                    self.service_webhooks[service.strip()] = webhook.strip()
         
         # Mock data configuration
         self.num_errors = int(os.getenv("NUM_ERRORS", "5"))

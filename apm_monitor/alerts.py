@@ -14,14 +14,79 @@ logger = logging.getLogger(__name__)
 class WebhookAlerts:
     """Class for sending webhook alerts."""
     
-    def __init__(self, webhook_url):
+    def __init__(self, webhook_url, service_webhooks=None):
         """
         Initialize webhook alerts.
         
         Args:
-            webhook_url: Slack webhook URL
+            webhook_url: Default Slack webhook URL
+            service_webhooks: Optional dict mapping service names to webhook URLs
         """
-        self.webhook_url = webhook_url
+        self.default_webhook_url = webhook_url
+        self.service_webhooks = service_webhooks or {}
+        # Service name to channel mapping (for channel override in payload)
+        # Note: Channel override in webhook payload may not work in all Slack setups.
+        # The most reliable method is to use separate webhook URLs per channel via SERVICE_WEBHOOKS.
+        # This mapping is kept for cases where channel override is supported.
+        self.service_channel_map = {
+            # Salina services -> #salina-alerts
+            "Salina": "#salina-alerts",
+            "Salina API v1": "#salina-alerts",
+            "Salina Auth API": "#salina-alerts",
+            "Salina Auth API Staging": "#salina-alerts",
+            # Media-Meter services -> #media-meter-alerts
+            "Media-Meter Global API V2": "#global-api-alerts",
+            # Scoup services -> #scoup-alerts (or default channel)
+            "Scoup API Production": "#scoup-alerts",
+            "Scoup API Staging": "#scoup-alerts",
+            # Other services
+            "Bebot Fast API": "#bebot-alerts",
+            "Searchsift": "#searchsift-alerts",
+        }
+    
+    def get_webhook_url_for_service(self, service_name):
+        """
+        Get the webhook URL for a given service name.
+        
+        Args:
+            service_name: Name of the service
+        
+        Returns:
+            str: Webhook URL for the service, or default webhook URL
+        """
+        # Check exact match first
+        if service_name in self.service_webhooks:
+            return self.service_webhooks[service_name]
+        
+        # Check partial match (e.g., "Salina" in "Salina API v1")
+        for key, webhook_url in self.service_webhooks.items():
+            if key.lower() in service_name.lower() or service_name.lower() in key.lower():
+                return webhook_url
+        
+        # Default webhook
+        return self.default_webhook_url
+    
+    def get_channel_for_service(self, service_name):
+        """
+        Get the Slack channel for a given service name.
+        
+        Args:
+            service_name: Name of the service
+        
+        Returns:
+            str: Channel name (e.g., "#salina-alerts") or None for default channel
+        """
+        # Check exact match first
+        if service_name in self.service_channel_map:
+            return self.service_channel_map[service_name]
+        
+        # Check partial match (e.g., "Salina" in "Salina API v1")
+        for key, channel in self.service_channel_map.items():
+            if key.lower() in service_name.lower() or service_name.lower() in key.lower():
+                return channel
+        
+        # Default channel (None means use webhook's default channel)
+        return None
     
     def send_alert(self, service_name, error_count, environment, sample_errors=None):
         """
@@ -37,7 +102,7 @@ class WebhookAlerts:
             bool: True if alert was sent successfully, False otherwise
         """
         # Format message for Slack
-        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        timestamp = datetime.now(timezone).strftime("%Y-%m-%d %H:%M:%S")
         text = (
             f"🚨 *APM Error Alert*\n\n"
             f"*Service:* {service_name}\n"
@@ -97,6 +162,10 @@ class WebhookAlerts:
                     "short": False
                 })
         
+        # Get webhook URL for this service
+        # Note: Each webhook URL is configured for its specific channel in Slack
+        webhook_url = self.get_webhook_url_for_service(service_name)
+        
         # Slack webhook format
         payload = {
             "text": text,
@@ -109,11 +178,29 @@ class WebhookAlerts:
         }
         
         try:
-            logger.info(
-                f"Sending alert to webhook for {service_name}/{environment}: "
-                f"{error_count} errors"
-            )
-            response = requests.post(self.webhook_url, json=payload, timeout=10)
+            # Log which webhook is being used
+            if service_name in self.service_webhooks:
+                logger.info(
+                    f"Sending alert using service-specific webhook for {service_name}/{environment}: "
+                    f"{error_count} errors"
+                )
+            else:
+                # Check if partial match was used
+                matched = False
+                for key in self.service_webhooks.keys():
+                    if key.lower() in service_name.lower() or service_name.lower() in key.lower():
+                        logger.info(
+                            f"Sending alert using service-specific webhook (matched '{key}') for {service_name}/{environment}: "
+                            f"{error_count} errors"
+                        )
+                        matched = True
+                        break
+                if not matched:
+                    logger.info(
+                        f"Sending alert using default webhook for {service_name}/{environment}: "
+                        f"{error_count} errors"
+                    )
+            response = requests.post(webhook_url, json=payload, timeout=10)
             response.raise_for_status()
             logger.info(f"Successfully sent alert to webhook. Status: {response.status_code}")
             return True

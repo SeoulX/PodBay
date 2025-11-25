@@ -83,7 +83,7 @@ class APMErrorQueries:
                                             "size": 3,
                                             "sort": [{"@timestamp": {"order": "desc"}}],
                                             "_source": {
-                                                "includes": ["error.log.message", "error.culprit", "error.type", "@timestamp"]
+                                                "includes": ["error.log.message", "error.culprit", "error.type", "@timestamp", "kubernetes.pod.name"]
                                             }
                                         }
                                     }
@@ -134,11 +134,19 @@ class APMErrorQueries:
                                     if len(error_message) > 500:
                                         error_message = error_message[:500] + "..."
                                     
+                                    # Extract pod name if available
+                                    pod_name = ""
+                                    kubernetes = error_source.get("kubernetes", {})
+                                    if kubernetes:
+                                        pod_info = kubernetes.get("pod", {})
+                                        pod_name = pod_info.get("name", "")
+                                    
                                     sample_errors.append({
                                         "message": error_message,
                                         "culprit": error_info.get("culprit", ""),
                                         "type": error_info.get("type", ""),
-                                        "timestamp": error_source.get("@timestamp", "")
+                                        "timestamp": error_source.get("@timestamp", ""),
+                                        "pod_name": pod_name
                                     })
                             
                             errors_by_service_env.append({

@@ -11,6 +11,31 @@ from requests.exceptions import RequestException
 logger = logging.getLogger(__name__)
 
 
+def truncate_pod_name(pod_name):
+    """
+    Truncate pod name by removing -production-* suffix.
+    
+    Example:
+        "global-fast-api-deploy-production-6bf7854c57-wfft9" 
+        -> "global-fast-api-deploy"
+    
+    Args:
+        pod_name: Full pod name
+    
+    Returns:
+        str: Truncated pod name, or original if no -production- found
+    """
+    if not pod_name:
+        return ""
+    
+    # Find the position of "-production-"
+    idx = pod_name.find("-production-")
+    if idx != -1:
+        return pod_name[:idx]
+    
+    return pod_name
+
+
 class WebhookAlerts:
     """Class for sending webhook alerts."""
     
@@ -143,17 +168,26 @@ class WebhookAlerts:
                 error_msg = err.get("message", "")
                 error_type = err.get("type", "")
                 error_culprit = err.get("culprit", "")
+                pod_name = err.get("pod_name", "")
                 
-                detail = f"*Error {i}:*"
+                detail = f"*Error {i}:*\n\n"
+                
+                if pod_name:
+                    truncated_pod = truncate_pod_name(pod_name)
+                    detail += f"Pod: `{truncated_pod}`\n"
+                
                 if error_type:
-                    detail += f"\nType: `{error_type}`"
+                    detail += f"Type: `{error_type}`\n"
+                
                 if error_culprit:
-                    detail += f"\nLocation: `{error_culprit}`"
+                    detail += f"Location: `{error_culprit}`\n"
+                
+                detail += "Message:\n"
                 if error_msg:
                     # Truncate very long messages for Slack
                     msg = error_msg[:300] + "..." if len(error_msg) > 300 else error_msg
                     # Format error message as code block
-                    detail += f"\nMessage:\n```\n{msg}\n```"
+                    detail += f"```\n{msg}\n```"
                 
                 error_details.append(detail)
             

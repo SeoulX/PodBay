@@ -4,7 +4,7 @@ Handles sending alerts to webhooks (Slack).
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import requests
 from requests.exceptions import RequestException
 
@@ -56,14 +56,17 @@ class WebhookAlerts:
         """
         # Check exact match first
         if service_name in self.service_webhooks:
+            logger.debug(f"Exact match found for service '{service_name}'")
             return self.service_webhooks[service_name]
         
         # Check partial match (e.g., "Salina" in "Salina API v1")
         for key, webhook_url in self.service_webhooks.items():
             if key.lower() in service_name.lower() or service_name.lower() in key.lower():
+                logger.debug(f"Partial match found: '{key}' matches '{service_name}'")
                 return webhook_url
         
         # Default webhook
+        logger.debug(f"No match found for service '{service_name}', using default webhook")
         return self.default_webhook_url
     
     def get_channel_for_service(self, service_name):
@@ -101,8 +104,9 @@ class WebhookAlerts:
         Returns:
             bool: True if alert was sent successfully, False otherwise
         """
-        # Format message for Slack
-        timestamp = datetime.now(timezone).strftime("%Y-%m-%d %H:%M:%S")
+        # Format message for Slack (Philippine Time, UTC+8)
+        ph_timezone = timezone(timedelta(hours=8))
+        timestamp = datetime.now(ph_timezone).strftime("%Y-%m-%d %H:%M:%S PHT")
         text = (
             f"🚨 *APM Error Alert*\n\n"
             f"*Service:* {service_name}\n"
@@ -184,6 +188,7 @@ class WebhookAlerts:
                     f"Sending alert using service-specific webhook for {service_name}/{environment}: "
                     f"{error_count} errors"
                 )
+                logger.debug(f"Webhook URL: {webhook_url[:60]}...")
             else:
                 # Check if partial match was used
                 matched = False
@@ -193,6 +198,7 @@ class WebhookAlerts:
                             f"Sending alert using service-specific webhook (matched '{key}') for {service_name}/{environment}: "
                             f"{error_count} errors"
                         )
+                        logger.debug(f"Webhook URL: {webhook_url[:60]}...")
                         matched = True
                         break
                 if not matched:
@@ -200,14 +206,25 @@ class WebhookAlerts:
                         f"Sending alert using default webhook for {service_name}/{environment}: "
                         f"{error_count} errors"
                     )
+                    logger.debug(f"Webhook URL: {webhook_url[:60]}...")
+            
             response = requests.post(webhook_url, json=payload, timeout=10)
             response.raise_for_status()
             logger.info(f"Successfully sent alert to webhook. Status: {response.status_code}")
             return True
-        except RequestException as e:
-            logger.error(f"Failed to send webhook alert: {e}")
-            if hasattr(e, 'response') and e.response is not None:
-                logger.error(f"Response: {e.response.text}")
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"HTTP error sending webhook alert for {service_name}/{environment}: {e}")
+            if e.response is not None:
+                logger.error(f"HTTP Status: {e.response.status_code}")
+                logger.error(f"Response body: {e.response.text}")
+            return False
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Request error sending webhook alert for {service_name}/{environment}: {e}")
+            logger.error(f"Webhook URL used: {webhook_url[:80]}...")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error sending webhook alert for {service_name}/{environment}: {e}")
+            logger.exception(e)
             return False
     
     def send_summary_alert(self, errors_by_service_env, total_errors):
@@ -221,7 +238,9 @@ class WebhookAlerts:
         Returns:
             bool: True if alert was sent successfully, False otherwise
         """
-        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        # Philippine Time (UTC+8)
+        ph_timezone = timezone(timedelta(hours=8))
+        timestamp = datetime.now(ph_timezone).strftime("%Y-%m-%d %H:%M:%S PHT")
         
         # Build summary text
         summary_lines = [

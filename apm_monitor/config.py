@@ -33,15 +33,31 @@ class Config:
         
         # Webhook configuration
         self.slack_webhook = os.getenv("SLACK_WEBHOOK")
-        # Service-specific webhooks (format: "ServiceName:webhook_url,ServiceName2:webhook_url2")
-        # Example: "Salina:https://hooks.slack.com/...,Media-Meter:https://hooks.slack.com/..."
+        # Service-specific webhooks - load from individual environment variables
         self.service_webhooks = {}
-        service_webhooks_str = os.getenv("SERVICE_WEBHOOKS", "")
-        if service_webhooks_str:
-            for mapping in service_webhooks_str.split(","):
-                if ":" in mapping:
-                    service, webhook = mapping.split(":", 1)
-                    self.service_webhooks[service.strip()] = webhook.strip()
+        
+        # Map service names to their webhook environment variable names
+        service_webhook_mapping = {
+            # Salina services -> SALINA_WEBHOOK
+            "Salina": "SALINA_WEBHOOK",
+            "Salina API v1": "SALINA_WEBHOOK",
+            "Salina Auth API": "SALINA_WEBHOOK",
+            "Salina Auth API Staging": "SALINA_WEBHOOK",
+            # Media-Meter services -> MEDIA_METER_WEBHOOK
+            "Media-Meter Global API V2": "MEDIA_METER_WEBHOOK",
+            # Scoup services -> SCOUP_WEBHOOK
+            "Scoup API Production": "SCOUP_WEBHOOK",
+            "Scoup API Staging": "SCOUP_WEBHOOK",
+            # Other services
+            "Bebot Fast API": "BEBOT_WEBHOOK",
+            "Searchsift": "SEARCHSIFT_WEBHOOK",
+        }
+        
+        # Build service_webhooks dict from individual webhook variables
+        for service_name, env_var_name in service_webhook_mapping.items():
+            webhook_url = os.getenv(env_var_name)
+            if webhook_url:
+                self.service_webhooks[service_name] = webhook_url
         
         # Mock data configuration
         self.num_errors = int(os.getenv("NUM_ERRORS", "5"))

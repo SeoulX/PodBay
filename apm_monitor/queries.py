@@ -80,7 +80,7 @@ class APMErrorQueries:
                                 "aggs": {
                                     "sample_errors": {
                                         "top_hits": {
-                                            "size": 3,
+                                            "size": 1,
                                             "sort": [{"@timestamp": {"order": "desc"}}],
                                             "_source": {
                                                 "includes": ["error.log.message", "error.culprit", "error.type", "@timestamp"]

@@ -142,7 +142,7 @@ class WebhookAlerts:
         # Add error details if available
         if sample_errors and len(sample_errors) > 0:
             error_details = []
-            for i, err in enumerate(sample_errors[:3], 1):  # Show up to 3 sample errors
+            for i, err in enumerate(sample_errors[:1], 1):  # Show up to 1 sample error
                 error_msg = err.get("message", "")
                 error_type = err.get("type", "")
                 error_culprit = err.get("culprit", "")

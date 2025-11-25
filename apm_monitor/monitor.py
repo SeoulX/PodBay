@@ -50,7 +50,7 @@ class APMErrorMonitor:
         
         # Initialize queries and alerts
         self.queries = APMErrorQueries(self.es_client.get_client())
-        self.alerts = WebhookAlerts(self.config.slack_webhook)
+        self.alerts = WebhookAlerts(self.config.slack_webhook, self.config.service_webhooks)
         
         return True
     

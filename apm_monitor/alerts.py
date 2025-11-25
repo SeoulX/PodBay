@@ -110,31 +110,28 @@ class WebhookAlerts:
         text = (
             f"🚨 *APM Error Alert*\n\n"
             f"*Service:* {service_name}\n"
-            f"*Environment:* {environment}\n"
-            f"*Error Count:* {error_count}\n"
-            f"*Time:* {timestamp}"
         )
         
         # Build fields for attachment
         fields = [
             {
                 "title": "Service",
-                "value": service_name,
+                "value": f"`{service_name}`",
                 "short": True
             },
             {
                 "title": "Environment",
-                "value": environment,
+                "value": f"`{environment}`",
                 "short": True
             },
             {
                 "title": "Error Count",
-                "value": str(error_count),
+                "value": f"`{error_count}`",
                 "short": True
             },
             {
                 "title": "Time",
-                "value": timestamp,
+                "value": f"`{timestamp}`",
                 "short": True
             }
         ]
@@ -149,13 +146,14 @@ class WebhookAlerts:
                 
                 detail = f"*Error {i}:*"
                 if error_type:
-                    detail += f"\nType: {error_type}"
+                    detail += f"\nType: `{error_type}`"
                 if error_culprit:
-                    detail += f"\nLocation: {error_culprit}"
+                    detail += f"\nLocation: `{error_culprit}`"
                 if error_msg:
                     # Truncate very long messages for Slack
                     msg = error_msg[:300] + "..." if len(error_msg) > 300 else error_msg
-                    detail += f"\nMessage: {msg}"
+                    # Format error message as code block
+                    detail += f"\nMessage:\n```\n{msg}\n```"
                 
                 error_details.append(detail)
             

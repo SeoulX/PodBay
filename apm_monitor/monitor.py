@@ -28,6 +28,7 @@ class APMErrorMonitor:
         self.es_client = None
         self.queries = None
         self.alerts = None
+        self.jira_client = None
     
     def initialize(self):
         """
@@ -50,7 +51,24 @@ class APMErrorMonitor:
         
         # Initialize queries and alerts
         self.queries = APMErrorQueries(self.es_client.get_client())
-        self.alerts = WebhookAlerts(self.config.slack_webhook, self.config.service_webhooks)
+        jira_url = self.config.jira_url if self.config.jira_enabled else None
+        self.alerts = WebhookAlerts(self.config.slack_webhook, self.config.service_webhooks, jira_url=jira_url)
+        
+        # Initialize Jira client if enabled
+        if self.config.jira_enabled:
+            try:
+                from apm_monitor.jira_client import JiraClient
+                jira_config = self.config.get_jira_config()
+                if jira_config:
+                    self.jira_client = JiraClient(**jira_config)
+                    if not self.jira_client.is_connected():
+                        logger.warning("Jira integration enabled but connection failed. Continuing without Jira.")
+                        self.jira_client = None
+                    else:
+                        logger.info("Jira integration enabled and connected successfully")
+            except ImportError:
+                logger.error("Jira integration enabled but 'jira' package is not installed. Install it with: pip install jira")
+                self.jira_client = None
         
         return True
     
@@ -81,23 +99,68 @@ class APMErrorMonitor:
             
             # Send individual alerts for each service/environment combination
             alerts_sent = 0
+            jira_tickets_created = 0
             for error_info in errors_by_service_env:
                 if error_info["error_count"] > 0:
                     sample_errors = error_info.get("sample_errors", [])
+                    service_name = error_info["service"]
+                    environment = error_info["environment"]
+                    
+                    # Create Jira ticket first if enabled (so we can include link in Slack)
+                    jira_issue = None
+                    if self.jira_client and self.jira_client.is_connected():
+                        jira_issue = self.jira_client.create_issue(
+                            service_name=service_name,
+                            environment=environment,
+                            error_count=error_info["error_count"],
+                            sample_errors=sample_errors,
+                            check_duplicates=self.config.jira_check_duplicates,
+                            duplicate_lookback_hours=self.config.jira_duplicate_lookback_hours
+                        )
+                        if jira_issue:
+                            jira_tickets_created += 1
+                            # Extract unique_id from the issue for logging
+                            issue_summary = jira_issue.fields.summary if hasattr(jira_issue.fields, 'summary') else ""
+                            issue_description = jira_issue.fields.description if hasattr(jira_issue.fields, 'description') else ""
+                            unique_id = self.jira_client._extract_unique_id(issue_description, issue_summary) if self.jira_client else None
+                            if unique_id:
+                                logger.info(
+                                    f"Created Jira ticket {unique_id} (Jira: {jira_issue.key}) for {service_name}/{environment}"
+                                )
+                            else:
+                                logger.info(
+                                    f"Created Jira ticket {jira_issue.key} for {service_name}/{environment}"
+                                )
+                    
+                    # Extract unique_id from the issue for Slack alert
+                    jira_issue_key = None
+                    jira_unique_id = None
+                    if jira_issue:
+                        jira_issue_key = jira_issue.key
+                        # Extract unique_id from the issue
+                        issue_summary = jira_issue.fields.summary if hasattr(jira_issue.fields, 'summary') else ""
+                        issue_description = jira_issue.fields.description if hasattr(jira_issue.fields, 'description') else ""
+                        if self.jira_client:
+                            jira_unique_id = self.jira_client._extract_unique_id(issue_description, issue_summary)
+                    
+                    # Send Slack alert (include Jira ticket link if available)
                     if self.alerts.send_alert(
-                        error_info["service"],
+                        service_name,
                         error_info["error_count"],
-                        error_info["environment"],
-                        sample_errors=sample_errors
+                        environment,
+                        sample_errors=sample_errors,
+                        jira_issue_key=jira_issue_key,
+                        jira_unique_id=jira_unique_id
                     ):
                         alerts_sent += 1
                     else:
                         logger.warning(
-                            f"Failed to send alert for "
-                            f"{error_info['service']}/{error_info['environment']}"
+                            f"Failed to send alert for {service_name}/{environment}"
                         )
             
             logger.info(f"Sent {alerts_sent} individual alerts")
+            if self.jira_client:
+                logger.info(f"Created/updated {jira_tickets_created} Jira tickets")
         else:
             logger.info("No errors detected across all services and environments")
         

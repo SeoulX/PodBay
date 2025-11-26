@@ -10,47 +10,24 @@ logger = logging.getLogger(__name__)
 
 
 class APMErrorQueries:
-    """Class for querying APM errors from Elasticsearch."""
     
     def __init__(self, es_client):
-        """
-        Initialize APM error queries.
-        
-        Args:
-            es_client: Elasticsearch client instance
-        """
         self.es_client = es_client
     
     def query_errors_by_service_env(self, service_name, environment, lookback_minutes):
-        """
-        Query Elasticsearch for APM errors grouped by service and environment.
-        
-        Args:
-            service_name: Optional service name filter (None for all services)
-            environment: Optional environment filter (None for all environments)
-            lookback_minutes: Number of minutes to look back for errors
-        
-        Returns:
-            tuple: (errors_by_service_env list, total_errors count) or (None, None) on error
-        """
         try:
-            # Build query filters
             filters = [
                 {"term": {"processor.event": "error"}},
                 {"range": {"@timestamp": {"gte": f"now-{lookback_minutes}m"}}}
             ]
             
-            # Add service filter if specified
             if service_name:
-                # Try keyword field first, fallback to text field
                 filters.append({"term": {"service.name": service_name}})
                 logger.info(f"Filtering by service: {service_name}")
             else:
                 logger.info("Querying all services")
             
-            # Add environment filter if specified
             if environment:
-                # Try keyword field first, fallback to text field
                 filters.append({"term": {"service.environment": environment}})
                 logger.info(f"Filtering by environment: {environment}")
             else:
@@ -62,20 +39,20 @@ class APMErrorQueries:
                         "filter": filters
                     }
                 },
-                "size": 0,  # We don't need the actual documents
+                "size": 0,
                 "aggs": {
                     "by_service": {
                         "terms": {
-                            "field": "service.name",  # Use keyword field for aggregations (logs-apm.error* uses keyword type)
-                            "size": 1000,  # Support up to 1000 services
-                            "missing": "unknown"  # Handle missing values
+                            "field": "service.name",
+                            "size": 1000,
+                            "missing": "unknown"
                         },
                         "aggs": {
                             "by_environment": {
                                 "terms": {
-                                    "field": "service.environment",  # Use keyword field for aggregations (logs-apm.error* uses keyword type)
-                                    "size": 100,  # Support up to 100 environments per service
-                                    "missing": "unknown"  # Handle missing values
+                                    "field": "service.environment",
+                                    "size": 100,
+                                    "missing": "unknown"
                                 },
                                 "aggs": {
                                     "sample_errors": {
@@ -83,7 +60,12 @@ class APMErrorQueries:
                                             "size": 3,
                                             "sort": [{"@timestamp": {"order": "desc"}}],
                                             "_source": {
-                                                "includes": ["error.log.message", "error.culprit", "error.type", "@timestamp", "kubernetes.pod.name"]
+                                                "includes": [
+                                                    "error",
+                                                    "@timestamp",
+                                                    "kubernetes.pod.name",
+                                                    "message"
+                                                ]
                                             }
                                         }
                                     }
@@ -95,13 +77,11 @@ class APMErrorQueries:
             }
             
             logger.info(f"Querying APM errors in last {lookback_minutes} minutes")
-            # Query both apm-* and logs-apm.error* indices to catch all error types
             res = self.es_client.search(
                 index="logs-apm.error*",
                 body=query_body
             )
             
-            # Parse aggregation results
             errors_by_service_env = []
             total_errors = 0
             
@@ -110,13 +90,11 @@ class APMErrorQueries:
                     service = service_bucket["key"]
                     service_total = service_bucket["doc_count"]
                     
-                    # Get environment breakdown
                     if "by_environment" in service_bucket:
                         for env_bucket in service_bucket["by_environment"]["buckets"]:
                             env = env_bucket["key"]
                             env_count = env_bucket["doc_count"]
                             
-                            # Extract sample error messages
                             sample_errors = []
                             if "sample_errors" in env_bucket:
                                 for hit in env_bucket["sample_errors"]["hits"]["hits"]:
@@ -124,17 +102,45 @@ class APMErrorQueries:
                                     error_info = error_source.get("error", {})
                                     error_log = error_info.get("log", {})
                                     
+                                    # Extract error message - try multiple paths
+                                    # 1. For log-based errors: error.log.message
                                     error_message = error_log.get("message", "")
+                                    # 2. For exception-based errors: error.exception[0].message
                                     if not error_message:
-                                        error_message = error_info.get("message", "")
+                                        error_exception = error_info.get("exception", [])
+                                        if error_exception and len(error_exception) > 0:
+                                            error_message = error_exception[0].get("message", "")
+                                    # 3. Top-level message field
                                     if not error_message:
-                                        error_message = error_info.get("type", "Unknown error")
+                                        error_message = error_source.get("message", "")
+                                    # 4. Fallback to error type or grouping name
+                                    if not error_message:
+                                        error_message = error_info.get("grouping_name", "")
+                                    # 5. Last resort fallback
+                                    if not error_message:
+                                        error_message = "Unknown error"
+                                        logger.warning(f"Could not extract error message from error structure")
                                     
-                                    # Truncate long messages
                                     if len(error_message) > 500:
                                         error_message = error_message[:500] + "..."
                                     
-                                    # Extract pod name if available
+                                    # Extract error type - try multiple paths
+                                    # 1. For exception-based errors: error.exception[0].type
+                                    error_type = ""
+                                    error_exception = error_info.get("exception", [])
+                                    if error_exception and len(error_exception) > 0:
+                                        error_type = error_exception[0].get("type", "")
+                                    # 2. For log-based errors: error.log.logger_name
+                                    if not error_type:
+                                        error_type = error_log.get("logger_name", "")
+                                    # 3. Fallback to grouping_name
+                                    if not error_type:
+                                        error_type = error_info.get("grouping_name", "Log Error")
+                                    
+                                    # Extract culprit
+                                    error_culprit = error_info.get("culprit", "")
+                                    
+                                    # Extract pod name
                                     pod_name = ""
                                     kubernetes = error_source.get("kubernetes", {})
                                     if kubernetes:
@@ -143,8 +149,8 @@ class APMErrorQueries:
                                     
                                     sample_errors.append({
                                         "message": error_message,
-                                        "culprit": error_info.get("culprit", ""),
-                                        "type": error_info.get("type", ""),
+                                        "culprit": error_culprit,
+                                        "type": error_type,
                                         "timestamp": error_source.get("@timestamp", ""),
                                         "pod_name": pod_name
                                     })
@@ -157,7 +163,6 @@ class APMErrorQueries:
                             })
                             total_errors += env_count
                     else:
-                        # No environment field, use "unknown"
                         errors_by_service_env.append({
                             "service": service,
                             "environment": "unknown",

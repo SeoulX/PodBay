@@ -39,16 +39,18 @@ def truncate_pod_name(pod_name):
 class WebhookAlerts:
     """Class for sending webhook alerts."""
     
-    def __init__(self, webhook_url, service_webhooks=None):
+    def __init__(self, webhook_url, service_webhooks=None, jira_url=None):
         """
         Initialize webhook alerts.
         
         Args:
             webhook_url: Default Slack webhook URL
             service_webhooks: Optional dict mapping service names to webhook URLs
+            jira_url: Optional Jira server URL for creating ticket links
         """
         self.default_webhook_url = webhook_url
         self.service_webhooks = service_webhooks or {}
+        self.jira_url = jira_url
         # Service name to channel mapping (for channel override in payload)
         # Note: Channel override in webhook payload may not work in all Slack setups.
         # The most reliable method is to use separate webhook URLs per channel via SERVICE_WEBHOOKS.
@@ -116,7 +118,7 @@ class WebhookAlerts:
         # Default channel (None means use webhook's default channel)
         return None
     
-    def send_alert(self, service_name, error_count, environment, sample_errors=None):
+    def send_alert(self, service_name, error_count, environment, sample_errors=None, jira_issue_key=None, jira_unique_id=None):
         """
         Send alert to webhook (Slack) for a specific service/environment.
         
@@ -125,6 +127,8 @@ class WebhookAlerts:
             error_count: Number of errors detected
             environment: Environment name
             sample_errors: Optional list of sample error details
+            jira_issue_key: Optional Jira issue key (e.g., DDT-1) to include in the alert
+            jira_unique_id: Optional unique ID (e.g., DO-112625-20251126) to display instead of Jira key
         
         Returns:
             bool: True if alert was sent successfully, False otherwise
@@ -160,6 +164,26 @@ class WebhookAlerts:
                 "short": True
             }
         ]
+        
+        # Add Jira ticket link if available
+        if jira_issue_key:
+            # Use unique_id if available, otherwise use Jira key
+            display_id = jira_unique_id if jira_unique_id else jira_issue_key
+            if self.jira_url:
+                # Construct full Jira URL (always use Jira key for the link)
+                jira_link = f"{self.jira_url}/browse/{jira_issue_key}"
+                fields.append({
+                    "title": "Jira Ticket",
+                    "value": f"<{jira_link}|{display_id}>",
+                    "short": True
+                })
+            else:
+                # Just show the display ID if URL not available
+                fields.append({
+                    "title": "Jira Ticket",
+                    "value": f"`{display_id}`",
+                    "short": True
+                })
         
         # Add error details if available
         if sample_errors and len(sample_errors) > 0:

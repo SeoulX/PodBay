@@ -59,6 +59,25 @@ class Config:
             if webhook_url:
                 self.service_webhooks[service_name] = webhook_url
         
+        # Jira configuration (optional)
+        self.jira_url = os.getenv("JIRA_URL")  # e.g., https://yourcompany.atlassian.net
+        self.jira_email = os.getenv("JIRA_EMAIL")  # Email for Jira authentication
+        self.jira_api_token = os.getenv("JIRA_API_TOKEN")  # API token from https://id.atlassian.com/manage-profile/security/api-tokens
+        self.jira_project_key = os.getenv("JIRA_PROJECT_KEY")  # Project key (e.g., "APM")
+        self.jira_issue_type = os.getenv("JIRA_ISSUE_TYPE", "Bug")  # Issue type (default: Bug)
+        self.jira_assignee = os.getenv("JIRA_ASSIGNEE")  # Optional assignee username or email
+        self.jira_enabled = os.getenv("JIRA_ENABLED", "false").lower() == "true"  # Enable/disable Jira integration
+        self.jira_check_duplicates = os.getenv("JIRA_CHECK_DUPLICATES", "true").lower() == "true"  # Check for duplicate tickets
+        self.jira_duplicate_lookback_hours = int(os.getenv("JIRA_DUPLICATE_LOOKBACK_HOURS", "24"))  # Hours to look back for duplicates
+        
+        # Jira labels (comma-separated)
+        jira_labels_str = os.getenv("JIRA_LABELS", "")
+        self.jira_labels = [label.strip() for label in jira_labels_str.split(",") if label.strip()] if jira_labels_str else []
+        
+        # Jira components (comma-separated)
+        jira_components_str = os.getenv("JIRA_COMPONENTS", "")
+        self.jira_components = [comp.strip() for comp in jira_components_str.split(",") if comp.strip()] if jira_components_str else []
+        
         # Mock data configuration
         self.num_errors = int(os.getenv("NUM_ERRORS", "5"))
         self.services = os.getenv(
@@ -75,7 +94,39 @@ class Config:
         if not self.slack_webhook:
             logger.error("SLACK_WEBHOOK environment variable is not set")
             return False
+        
+        # Validate Jira configuration if enabled
+        if self.jira_enabled:
+            if not self.jira_url:
+                logger.error("JIRA_URL environment variable is required when JIRA_ENABLED=true")
+                return False
+            if not self.jira_email:
+                logger.error("JIRA_EMAIL environment variable is required when JIRA_ENABLED=true")
+                return False
+            if not self.jira_api_token:
+                logger.error("JIRA_API_TOKEN environment variable is required when JIRA_ENABLED=true")
+                return False
+            if not self.jira_project_key:
+                logger.error("JIRA_PROJECT_KEY environment variable is required when JIRA_ENABLED=true")
+                return False
+        
         return True
+    
+    def get_jira_config(self):
+        """Get Jira client configuration dictionary."""
+        if not self.jira_enabled:
+            return None
+        
+        return {
+            "jira_url": self.jira_url,
+            "email": self.jira_email,
+            "api_token": self.jira_api_token,
+            "project_key": self.jira_project_key,
+            "issue_type": self.jira_issue_type,
+            "assignee": self.jira_assignee,
+            "labels": self.jira_labels,
+            "components": self.jira_components
+        }
     
     def get_elasticsearch_config(self):
         """Get Elasticsearch client configuration dictionary."""

@@ -11,10 +11,9 @@ COPY apm_monitor/ ./apm_monitor/
 
 # Copy the entry point scripts
 COPY apm-error-monitor.py .
-COPY inject-mock-data.py .
 
 # Make scripts executable
-RUN chmod +x apm-error-monitor.py inject-mock-data.py
+RUN chmod +x apm-error-monitor.py
 
 # Run the monitoring script
 CMD ["python", "apm-error-monitor.py"]

@@ -138,8 +138,6 @@ h3. Error Summary
 *Today's Error Count ({today_date}):* {today_error_count}
 *Last Updated:* {timestamp}
 
-h3. Sample Errors
-
 """
         
         if sample_errors and len(sample_errors) > 0:

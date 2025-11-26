@@ -9,7 +9,7 @@ commonLabels:
 
 configMapGenerator:
 - name: apm-monitor-config
-  env: config.properties
+  env: ../config.properties
   options:
     labels:
       app: apm-error-monitor
@@ -17,7 +17,7 @@ configMapGenerator:
 
 secretGenerator:
 - name: apm-monitor-secret
-  env: secret.properties
+  env: ../secret.properties
   options:
     labels:
       app: apm-error-monitor

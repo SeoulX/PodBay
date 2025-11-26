@@ -43,3 +43,7 @@ Thumbs.db
 logs/
 secrets/
 secret.*
+
+# Generated/Output files
+latest_*_errors.json
+*.json.bak

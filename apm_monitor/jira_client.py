@@ -62,6 +62,22 @@ class JiraClient:
         """Check if Jira connection is active."""
         return self.jira is not None
     
+    def reconnect(self):
+        """
+        Attempt to reconnect to Jira.
+        
+        Returns:
+            bool: True if reconnection successful, False otherwise
+        """
+        logger.info(f"Attempting to reconnect to Jira at {self.jira_url}")
+        self._connect()
+        if self.is_connected():
+            logger.info("Successfully reconnected to Jira")
+            return True
+        else:
+            logger.warning("Failed to reconnect to Jira, will retry on next interval")
+            return False
+    
     def _generate_unique_id(self, service_name, environment, today_date):
         """
         Generate a unique identifier for the ticket.
